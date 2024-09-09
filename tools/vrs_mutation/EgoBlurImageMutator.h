@@ -124,7 +124,6 @@ namespace EgoBlur
 
       if (aprilTagData.find(timestampStr) == aprilTagData.end())
       {
-        std::cout << "No AprilTags found for timestamp: " << timestamp << std::endl;
         return img; // No tags for this timestamp
       }
 
