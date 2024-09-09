@@ -19,7 +19,7 @@
 #include <string>
 
 #include <fmt/core.h>
-#include <vrs/utils/FilterCopy.h> // @manual
+#include <vrs/utils/FilterCopy.h>     // @manual
 #include <vrs/utils/RecordFileInfo.h> // @manual
 
 #include <projectaria_tools/tools/samples/vrs_mutation/ImageMutationFilterCopier.h> // @manual
@@ -27,13 +27,17 @@
 
 #include <CLI/CLI.hpp>
 
-int main(int argc, const char* argv[]) {
+int main(int argc, const char *argv[])
+{
   // std::string mutationType;
   std::string vrsPathIn;
   std::string vrsPathOut;
   std::string vrsExportPath;
   std::string faceModelPath;
   std::string licensePlateModelPath;
+  std::string rgbAprilTagDataPath;
+  std::string leftCamAprilTagDataPath;
+  std::string rightCamAprilTagDataPath;
   float faceModelConfidenceThreshold;
   float licensePlateModelConfidenceThreshold;
   float scaleFactorDetections;
@@ -73,9 +77,14 @@ int main(int argc, const char* argv[]) {
   app.add_flag("--use-gpu", useGPU, "Use GPU for inference");
   app.add_option("-e,--exportPath", vrsExportPath, "VRS export output path");
 
+  app.add_option("--rgb-apriltag-data", rgbAprilTagDataPath, "RGB AprilTag data TXT file");
+  app.add_option("--left-apriltag-data", leftCamAprilTagDataPath, "Left camera AprilTag data TXT file");
+  app.add_option("--right-apriltag-data", rightCamAprilTagDataPath, "Right camera AprilTag data TXT file");
+
   CLI11_PARSE(app, argc, argv);
 
-  if (vrsPathIn == vrsPathOut) {
+  if (vrsPathIn == vrsPathOut)
+  {
     std::cerr << " <VRS_IN> <VRS_OUT> paths must be different." << std::endl;
     return EXIT_FAILURE;
   }
@@ -92,34 +101,37 @@ int main(int argc, const char* argv[]) {
   copyOptions.setCompressionPreset(vrs::CompressionPreset::Default);
 
   // Functor to perform image processing(blurring PII faces/license plates)
-  try {
+  try
+  {
     std::shared_ptr<vrs::utils::UserDefinedImageMutator> imageMutator;
-    if (setenv("ONEDNN_PRIMITIVE_CACHE_CAPACITY", "1", 1) == 0) {
-      // See github issue https://github.com/pytorch/pytorch/issues/29893 for
-      // details
-      std::cout << "Successfully Set ONEDNN_PRIMITIVE_CACHE_CAPACITY to 1"
-                << std::endl;
+
+    imageMutator = std::make_shared<EgoBlur::EgoBlurImageMutator>();
+
+    // Load AprilTag data from the provided TXT file
+    if (!rgbAprilTagDataPath.empty())
+    {
+      std::cout << "Loading RGB AprilTag data from: " << rgbAprilTagDataPath << std::endl;
+      dynamic_cast<EgoBlur::EgoBlurImageMutator *>(imageMutator.get())->loadAprilTagDataFromTXT(rgbAprilTagDataPath, dynamic_cast<EgoBlur::EgoBlurImageMutator *>(imageMutator.get())->rgbAprilTagData_);
     }
-    if (setenv("TORCH_CUDNN_V8_API_DISABLED", "1", 1) == 0) {
-      std::cout << "Successfully Set TORCH_CUDNN_V8_API_DISABLED to 1"
-                << std::endl;
+    if (!leftCamAprilTagDataPath.empty())
+    {
+      std::cout << "Loading Left Camera AprilTag data from: " << leftCamAprilTagDataPath << std::endl;
+      dynamic_cast<EgoBlur::EgoBlurImageMutator *>(imageMutator.get())->loadAprilTagDataFromTXT(leftCamAprilTagDataPath, dynamic_cast<EgoBlur::EgoBlurImageMutator *>(imageMutator.get())->leftAprilTagData_);
     }
-    imageMutator = std::make_shared<EgoBlur::EgoBlurImageMutator>(
-        faceModelPath,
-        faceModelConfidenceThreshold,
-        licensePlateModelPath,
-        licensePlateModelConfidenceThreshold,
-        scaleFactorDetections,
-        nmsThreshold,
-        useGPU);
+    if (!rightCamAprilTagDataPath.empty())
+    {
+      std::cout << "Loading Right Camera AprilTag data from: " << rightCamAprilTagDataPath << std::endl;
+      dynamic_cast<EgoBlur::EgoBlurImageMutator *>(imageMutator.get())->loadAprilTagDataFromTXT(rightCamAprilTagDataPath, dynamic_cast<EgoBlur::EgoBlurImageMutator *>(imageMutator.get())->rightAprilTagData_);
+    }
 
     auto copyMakeStreamFilterFunction =
         [&imageMutator](
-            vrs::RecordFileReader& fileReader,
-            vrs::RecordFileWriter& fileWriter,
+            vrs::RecordFileReader &fileReader,
+            vrs::RecordFileWriter &fileWriter,
             vrs::StreamId streamId,
-            const vrs::utils::CopyOptions& copyOptions)
-        -> std::unique_ptr<vrs::utils::RecordFilterCopier> {
+            const vrs::utils::CopyOptions &copyOptions)
+        -> std::unique_ptr<vrs::utils::RecordFilterCopier>
+    {
       auto imageMutatorFilter =
           std::make_unique<vrs::utils::ImageMutationFilter>(
               fileReader,
@@ -132,14 +144,14 @@ int main(int argc, const char* argv[]) {
 
     const int statusCode = filterCopy(
         filteredReader, targetPath, copyOptions, copyMakeStreamFilterFunction);
-    auto* const egoBlurMutator =
-        dynamic_cast<EgoBlur::EgoBlurImageMutator*>(imageMutator.get());
+    auto *const egoBlurMutator =
+        dynamic_cast<EgoBlur::EgoBlurImageMutator *>(imageMutator.get());
     std::cout << egoBlurMutator->logStatistics() << std::endl;
     return statusCode;
-  } catch (const std::exception& ex) {
-    std::cerr << "Error while applying EGOBLUR mutation : " << " to : "
-              << vrsPathIn << "\nError :\n"
-              << ex.what() << std::endl;
+  }
+  catch (const std::exception &ex)
+  {
+    std::cerr << "Error while applying EGOBLUR mutation: " << vrsPathIn << "\nError: " << ex.what() << std::endl;
     return EXIT_FAILURE;
   }
 }
