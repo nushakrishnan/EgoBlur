@@ -106,22 +106,25 @@ int main(int argc, const char *argv[])
     std::shared_ptr<vrs::utils::UserDefinedImageMutator> imageMutator;
 
     imageMutator = std::make_shared<EgoBlur::EgoBlurImageMutator>();
+    auto *mutator = dynamic_cast<EgoBlur::EgoBlurImageMutator *>(imageMutator.get());
 
-    // Load AprilTag data from the provided TXT file
     if (!rgbAprilTagDataPath.empty())
     {
       std::cout << "Loading RGB AprilTag data from: " << rgbAprilTagDataPath << std::endl;
-      dynamic_cast<EgoBlur::EgoBlurImageMutator *>(imageMutator.get())->loadAprilTagDataFromTXT(rgbAprilTagDataPath, dynamic_cast<EgoBlur::EgoBlurImageMutator *>(imageMutator.get())->rgbAprilTagData_);
+      mutator->loadAprilTagDataFromTXT(rgbAprilTagDataPath, mutator->rgbAprilTagData_);
+      std::cout << "RGB AprilTag data loaded, size: " << mutator->rgbAprilTagData_.size() << std::endl;
     }
     if (!leftCamAprilTagDataPath.empty())
     {
       std::cout << "Loading Left Camera AprilTag data from: " << leftCamAprilTagDataPath << std::endl;
-      dynamic_cast<EgoBlur::EgoBlurImageMutator *>(imageMutator.get())->loadAprilTagDataFromTXT(leftCamAprilTagDataPath, dynamic_cast<EgoBlur::EgoBlurImageMutator *>(imageMutator.get())->leftAprilTagData_);
+      mutator->loadAprilTagDataFromTXT(leftCamAprilTagDataPath, mutator->leftAprilTagData_);
+      std::cout << "Left Camera AprilTag data loaded, size: " << mutator->leftAprilTagData_.size() << std::endl;
     }
     if (!rightCamAprilTagDataPath.empty())
     {
       std::cout << "Loading Right Camera AprilTag data from: " << rightCamAprilTagDataPath << std::endl;
-      dynamic_cast<EgoBlur::EgoBlurImageMutator *>(imageMutator.get())->loadAprilTagDataFromTXT(rightCamAprilTagDataPath, dynamic_cast<EgoBlur::EgoBlurImageMutator *>(imageMutator.get())->rightAprilTagData_);
+      mutator->loadAprilTagDataFromTXT(rightCamAprilTagDataPath, mutator->rightAprilTagData_);
+      std::cout << "Right Camera AprilTag data loaded, size: " << mutator->rightAprilTagData_.size() << std::endl;
     }
 
     auto copyMakeStreamFilterFunction =

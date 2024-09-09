@@ -29,6 +29,7 @@
 #include <string>
 #include <fstream>       // For file I/O (reading the TXT file)
 #include <sstream>       // For parsing strings
+#include <iomanip>       // For std::setprecision
 #include <vector>        // For storing AprilTag corners
 #include <unordered_map> // For mapping timestamps to AprilTag data
 
@@ -40,17 +41,17 @@ namespace EgoBlur
 {
   struct AprilTagInfo
   {
-    double timestamp;
+    std::string timestamp;
     std::vector<cv::Point2f> corners;
   };
 
   struct EgoBlurImageMutator : public vrs::utils::UserDefinedImageMutator
   {
-    std::unordered_map<double, std::vector<AprilTagInfo>> rgbAprilTagData_;
-    std::unordered_map<double, std::vector<AprilTagInfo>> leftAprilTagData_;
-    std::unordered_map<double, std::vector<AprilTagInfo>> rightAprilTagData_;
+    std::unordered_map<std::string, std::vector<AprilTagInfo>> rgbAprilTagData_;
+    std::unordered_map<std::string, std::vector<AprilTagInfo>> leftAprilTagData_;
+    std::unordered_map<std::string, std::vector<AprilTagInfo>> rightAprilTagData_;
 
-    void loadAprilTagDataFromTXT(const std::string &txtFilePath, std::unordered_map<double, std::vector<AprilTagInfo>> &aprilTagData)
+    void loadAprilTagDataFromTXT(const std::string &txtFilePath, std::unordered_map<std::string, std::vector<AprilTagInfo>> &aprilTagData)
     {
       std::ifstream file(txtFilePath);
       std::string line;
@@ -65,7 +66,7 @@ namespace EgoBlur
         AprilTagInfo tagInfo;
         std::vector<cv::Point2f> corners;
 
-        // Assuming TXT format: timestamp x1 y1 x2 y2 x3 y3 x4 y4
+        // TXT format: timestamp x1 y1 x2 y2 x3 y3 x4 y4
         ss >> tagInfo.timestamp;
 
         for (int i = 0; i < 4; ++i)
@@ -82,7 +83,7 @@ namespace EgoBlur
       file.close();
     }
 
-    std::unordered_map<double, std::vector<AprilTagInfo>> &getAprilTagDataForStream(const vrs::StreamId &streamId)
+    std::unordered_map<std::string, std::vector<AprilTagInfo>> &getAprilTagDataForStream(const vrs::StreamId &streamId)
     {
       if (streamId.getNumericName().find("214") != std::string::npos)
       {
@@ -110,22 +111,27 @@ namespace EgoBlur
       const int channels = frame->getPixelFormat() == vrs::PixelFormat::RGB8 ? 3 : 1;
 
       // Convert PixelFrame to cv::Mat
-      cv::Mat img(height, width, CV_8UC(channels), static_cast<void *>(frame->getBuffer().data())).clone();
+      auto &buffer = frame->getBuffer();                    // Check if buffer is returned properly
+      void *bufferPtr = static_cast<void *>(buffer.data()); // Ensure correct casting
+
+      cv::Mat img = cv::Mat(height, width, CV_8UC(channels), bufferPtr).clone();
 
       auto &aprilTagData = getAprilTagDataForStream(streamId);
 
-      // Check if we have AprilTag data for this timestamp
-      if (aprilTagData.find(timestamp) == aprilTagData.end())
+      std::ostringstream ss;
+      ss << std::setprecision(6) << timestamp;
+      std::string timestampStr = ss.str();
+
+      if (aprilTagData.find(timestampStr) == aprilTagData.end())
       {
+        std::cout << "No AprilTags found for timestamp: " << timestamp << std::endl;
         return img; // No tags for this timestamp
       }
 
-      // Iterate through the AprilTags for this timestamp
-      for (const auto &tagInfo : aprilTagData[timestamp])
+      for (const auto &tagInfo : aprilTagData[timestampStr])
       {
         std::vector<cv::Point2f> corners = tagInfo.corners;
 
-        // Create a mask for the AprilTag polygon
         cv::Mat mask = cv::Mat::zeros(img.size(), CV_8UC1);
         std::vector<cv::Point> polygon;
         for (const auto &corner : corners)
@@ -133,27 +139,29 @@ namespace EgoBlur
           polygon.push_back(cv::Point(static_cast<int>(corner.x), static_cast<int>(corner.y)));
         }
 
-        // Fill the polygon in the mask
         const std::vector<std::vector<cv::Point>> polygons = {polygon};
         cv::fillPoly(mask, polygons, cv::Scalar(255));
 
-        // Blur the entire image
         cv::Mat blurredImage;
         cv::blur(img, blurredImage, cv::Size(30, 30)); // Adjust blur kernel size as needed
 
-        // Combine the blurred region with the original image using the mask
         blurredImage.copyTo(img, mask);
       }
       return img;
     }
 
-    // Operator to apply the blur to each frame based on the AprilTag data
+    // Operator to apply the blur
     bool operator()(double timestamp, const vrs::StreamId &streamId, vrs::utils::PixelFrame *frame) override
     {
       if (!frame)
       {
         return false;
       }
+
+      // timestamp to string
+      std::ostringstream ss;
+      ss << std::setprecision(6) << timestamp;
+      std::string timestampStr = ss.str();
 
       cv::Mat blurredImage;
       try
