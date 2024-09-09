@@ -143,7 +143,7 @@ namespace EgoBlur
         cv::fillPoly(mask, polygons, cv::Scalar(255));
 
         cv::Mat blurredImage;
-        cv::blur(img, blurredImage, cv::Size(30, 30)); // Adjust blur kernel size as needed
+        cv::blur(img, blurredImage, cv::Size(60, 60));
 
         blurredImage.copyTo(img, mask);
       }
