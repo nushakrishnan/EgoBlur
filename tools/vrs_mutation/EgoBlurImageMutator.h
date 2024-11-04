@@ -27,11 +27,10 @@
 #include <iostream>
 #include <memory>
 #include <string>
-#include <fstream>       // For file I/O (reading the TXT file)
-#include <sstream>       // For parsing strings
-#include <iomanip>       // For std::setprecision
-#include <vector>        // For storing AprilTag corners
-#include <unordered_map> // For mapping timestamps to AprilTag data
+#include <fstream> // For file I/O (reading the TXT file)
+#include <sstream> // For parsing strings
+#include <iomanip> // For std::setprecision
+#include <vector>  // For storing AprilTag corners
 
 #include <c10/cuda/CUDACachingAllocator.h>
 #include <opencv2/core.hpp>
@@ -41,17 +40,17 @@ namespace EgoBlur
 {
   struct AprilTagInfo
   {
-    std::string timestamp;
+    double timestamp;
     std::vector<cv::Point2f> corners;
   };
 
   struct EgoBlurImageMutator : public vrs::utils::UserDefinedImageMutator
   {
-    std::unordered_map<std::string, std::vector<AprilTagInfo>> rgbAprilTagData_;
-    std::unordered_map<std::string, std::vector<AprilTagInfo>> leftAprilTagData_;
-    std::unordered_map<std::string, std::vector<AprilTagInfo>> rightAprilTagData_;
+    std::map<double, std::vector<AprilTagInfo>> rgbAprilTagData_;
+    std::map<double, std::vector<AprilTagInfo>> leftAprilTagData_;
+    std::map<double, std::vector<AprilTagInfo>> rightAprilTagData_;
 
-    void loadAprilTagDataFromTXT(const std::string &txtFilePath, std::unordered_map<std::string, std::vector<AprilTagInfo>> &aprilTagData)
+    void loadAprilTagDataFromTXT(const std::string &txtFilePath, std::map<double, std::vector<AprilTagInfo>> &aprilTagData)
     {
       std::ifstream file(txtFilePath);
       std::string line;
@@ -83,7 +82,7 @@ namespace EgoBlur
       file.close();
     }
 
-    std::unordered_map<std::string, std::vector<AprilTagInfo>> &getAprilTagDataForStream(const vrs::StreamId &streamId)
+    std::map<double, std::vector<AprilTagInfo>> &getAprilTagDataForStream(const vrs::StreamId &streamId)
     {
       if (streamId.getNumericName().find("214") != std::string::npos)
       {
@@ -103,6 +102,30 @@ namespace EgoBlur
       }
     }
 
+    std::vector<AprilTagInfo> *findClosestTimestamp(double targetTimestamp, std::map<double, std::vector<AprilTagInfo>> &aprilTagData, double maxTolerance)
+    {
+      if (aprilTagData.empty())
+      {
+        return nullptr;
+      }
+      auto it = aprilTagData.lower_bound(targetTimestamp);
+
+      if (it != aprilTagData.end() && std::abs(it->first - targetTimestamp) <= maxTolerance)
+      {
+        return &it->second; // Match found within tolerance
+      }
+
+      if (it != aprilTagData.begin())
+      {
+        auto prev = std::prev(it);
+        if (std::abs(prev->first - targetTimestamp) <= maxTolerance)
+        {
+          return &prev->second; // Previous timestamp within tolerance
+        }
+      }
+      return nullptr; // No match within tolerance
+    }
+
     // Blurs the image based on the AprilTag corner data
     cv::Mat detectAndBlur(vrs::utils::PixelFrame *frame, const vrs::StreamId &streamId, double timestamp)
     {
@@ -118,16 +141,16 @@ namespace EgoBlur
 
       auto &aprilTagData = getAprilTagDataForStream(streamId);
 
-      std::ostringstream ss;
-      ss << std::setprecision(6) << timestamp;
-      std::string timestampStr = ss.str();
+      // Set tolerance to 10 ms
+      double maxTolerance = 0.01;
+      std::vector<AprilTagInfo> *matchingTags = findClosestTimestamp(timestamp, aprilTagData, maxTolerance);
 
-      if (aprilTagData.find(timestampStr) == aprilTagData.end())
+      if (!matchingTags)
       {
-        return img; // No tags for this timestamp
+        return img;
       }
 
-      for (const auto &tagInfo : aprilTagData[timestampStr])
+      for (const auto &tagInfo : *matchingTags)
       {
         std::vector<cv::Point2f> corners = tagInfo.corners;
 
@@ -156,11 +179,6 @@ namespace EgoBlur
       {
         return false;
       }
-
-      // timestamp to string
-      std::ostringstream ss;
-      ss << std::setprecision(6) << timestamp;
-      std::string timestampStr = ss.str();
 
       cv::Mat blurredImage;
       try
