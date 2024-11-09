@@ -180,10 +180,12 @@ namespace EgoBlur
         return false;
       }
 
+      double timestamp_ns = timestamp * 1e9;
+
       cv::Mat blurredImage;
       try
       {
-        blurredImage = detectAndBlur(frame, streamId, timestamp);
+        blurredImage = detectAndBlur(frame, streamId, timestamp_ns);
       }
       catch (const std::exception &e)
       {
