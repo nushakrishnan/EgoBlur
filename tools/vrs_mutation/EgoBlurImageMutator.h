@@ -141,7 +141,7 @@ namespace EgoBlur
 
       auto &aprilTagData = getAprilTagDataForStream(streamId);
 
-      double maxTolerance = 0.060;
+      double maxTolerance = 6e7;
       std::vector<AprilTagInfo> *matchingTags = findClosestTimestamp(timestamp, aprilTagData, maxTolerance);
 
       if (!matchingTags)
